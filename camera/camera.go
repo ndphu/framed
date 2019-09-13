@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"golang.org/x/sys/unix"
 	"log"
-	"sync"
 	"syscall"
 	"unsafe"
 )
@@ -79,13 +78,12 @@ type Camera struct {
 	height   uint32
 	device   string
 	fd       int
-	mutex    sync.RWMutex
-	imageLen uint32
-	imageBuf []byte
 	data     []byte
 	buf      v4l2Buffer
 	isReady  bool
 	ready    chan bool
+	request  chan bool
+	response chan []byte
 }
 
 func NewCamera(device string, with uint32, height uint32) *Camera {
@@ -95,6 +93,8 @@ func NewCamera(device string, with uint32, height uint32) *Camera {
 		device:  device,
 		isReady: false,
 		ready:   make(chan bool),
+		request: make(chan bool),
+		response: make(chan []byte),
 	}
 
 	return &c
@@ -194,7 +194,6 @@ func (c *Camera) start() error {
 
 	log.Println("query buffer successfully")
 
-	// Map memory
 	c.data, _ = unix.Mmap(
 		c.fd,
 		int64(c.buf.offset),
@@ -203,7 +202,6 @@ func (c *Camera) start() error {
 		unix.MAP_SHARED,
 	)
 
-	c.imageBuf = make([]byte, len(c.data))
 
 	qbuf := v4l2Buffer{
 		typ:    V4l2BufTypeVideoCapture,
@@ -257,8 +255,7 @@ func (c *Camera) framePump() error {
 
 		// Dequeue buffer
 		qbuf := v4l2Buffer{
-			typ:
-			V4l2BufTypeVideoCapture,
+			typ:    V4l2BufTypeVideoCapture,
 			memory: V4l2MemoryMmap,
 			index:  0,
 		}
@@ -269,20 +266,22 @@ func (c *Camera) framePump() error {
 			uintptr(unsafe.Pointer(&qbuf)),
 		)
 		if errno != 0 {
-			//			mutex.Unlock()
 			return errno
 		}
 
-		// Lock for writing
-		c.mutex.Lock()
+		log.Println("image size", qbuf.bytesused)
 
-		// Save buffer size
-		c.imageLen = qbuf.bytesused
-
-		copy(c.imageBuf, c.data)
-
-		// Unlock for readers
-		c.mutex.Unlock()
+		select {
+		case <-c.request:
+			log.Println("image requested")
+			image := make([]byte, qbuf.bytesused)
+			copySize := copy(image, c.data)
+			log.Println("copied", copySize, "bytes")
+			c.response <- image
+			break
+		default:
+			break
+		}
 
 		// Enqueue buffer
 		_, _, errno = syscall.Syscall(
@@ -298,8 +297,9 @@ func (c *Camera) framePump() error {
 }
 
 func (c *Camera) GetFrame() []byte {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
+	c.request <- true
 
-	return c.imageBuf[:c.imageLen]
+	image := <-c.response
+	log.Println("got frame with size:", len(image))
+	return image
 }
