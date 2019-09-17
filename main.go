@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/base64"
-	"frame-daemon/camera"
 	"frame-daemon/recognize"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -15,13 +14,6 @@ import (
 var recWrapper = recognize.RecognizerWrapper{}
 
 func main() {
-	cam := camera.NewCamera("/dev/video0", 640, 480)
-	if err := cam.Start(); err != nil {
-		panic(err)
-	}
-
-	defer cam.Stop()
-
 	rec, err := face.NewRecognizer("data")
 	if err != nil {
 		log.Fatalf("fail to initialize recognizer. %v\n", err)
@@ -40,22 +32,8 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	r.GET("/api/capture", func(c *gin.Context) {
-		frame := cam.GetFrame()
-		c.Writer.Header().Set("Content-Type", "image/jpeg")
-		c.Writer.Write(frame)
-	})
 
-	r.GET("/api/capture/json", func(c *gin.Context) {
-		frame := cam.GetFrame()
-		imageB64 := base64.StdEncoding.EncodeToString(frame)
-		c.JSON(200, gin.H{
-			"image": imageB64,
-		})
-	})
-
-	r.GET("/api/detectFaces", func(c *gin.Context) {
-		frame := cam.GetFrame()
+	r.POST("/api/detectFaces", func(c *gin.Context) {
 		if faces, err := recWrapper.Recognizer.Recognize(frame); err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 		} else {
