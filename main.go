@@ -53,10 +53,7 @@ func main() {
 				if faces, err := recWrapper.Recognizer.Recognize(frame); err != nil {
 					c.JSON(500, gin.H{"error": err.Error()})
 				} else {
-					imageB64 := base64.StdEncoding.EncodeToString(frame)
-
 					var dfs []DetectedFace
-
 					if faces != nil && len(faces) > 0 {
 						for _, f := range faces {
 							dfs = append(dfs, DetectedFace{
@@ -65,9 +62,7 @@ func main() {
 							})
 						}
 					}
-
 					c.JSON(200, gin.H{
-						"image":         imageB64,
 						"detectedFaces": dfs,
 					})
 				}
@@ -86,7 +81,6 @@ func main() {
 				if faces, err := recWrapper.Recognizer.Recognize(frame); err != nil {
 					c.JSON(500, gin.H{"error": err.Error()})
 				} else {
-					imageB64 := base64.StdEncoding.EncodeToString(frame)
 					var rfs []RecognizedFace
 					if faces != nil {
 						for _, f := range faces {
@@ -108,7 +102,6 @@ func main() {
 					}
 
 					c.JSON(200, gin.H{
-						"image":           imageB64,
 						"recognizedFaces": rfs,
 					})
 				}
